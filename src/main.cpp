@@ -4,12 +4,17 @@
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
 #include <WiFi.h>
+#include <PubSubClient.h>
 
 SCD30 airSensor;
 Adafruit_BME280 bme;
+WiFiClient espClient;
+PubSubClient client(espClient);
+
 
 const int ledPin = 12;
 const int buttonPin = 14;
+const char* mqtt_server = "3.104.60.108";
 
 char ssid[] = "InternodeF74F03";
 char password[] = "GGAYCK65NZTCZW9";
@@ -114,6 +119,38 @@ void forced_recalibration() {
   }
 }
 
+//**********************************
+//Function: Connect to the MQTT server
+//Description:  Connect to the defined MQTT server in order to process messages
+// Last Modified By: Robert Wilkinson
+// Last Modified Date: 01.01.20
+//**********************************
+void connect_mqtt(){
+  while (!client.connected()) {
+    Serial.print("Attempting to connect to MQTT server ");
+    Serial.println(mqtt_server);
+    if (client.connect("TestClient")) {
+      Serial.println("MQTT connected");
+    }
+    else {
+      Serial.print("Failed to connect. Reason Code: ");
+      Serial.println(client.state());
+      Serial.println("Attempting to reconnect in 2 seconds");
+      delay(2000);
+    }
+  }
+}
+
+//**********************************
+// Function: Send the message payload via MQTT
+// Description:  Once MQTT is connected and the payload is built, send the message.
+// Last Modified By: Robert Wilkinson
+// Last Modified Date: 01.01.20
+//**********************************
+void send_mqtt() {
+  client.publish("outTopic", "Test Message");
+}
+
 void setup() {
   pinMode(buttonPin, INPUT);
   pinMode(ledPin, OUTPUT);
@@ -126,6 +163,9 @@ void setup() {
   bme.begin(0x76);
 
   connect_wifi();
+  client.setServer(mqtt_server, 1883);
+  connect_mqtt();
+
   // set initial LED state
   digitalWrite(ledPin, ledState);
 }
@@ -139,6 +179,17 @@ void loop() {
   if (forcedRecalibration == 1 || forcedRecalibration == 2){
     forced_recalibration();
   }
+
+  if (client.connected()) {
+    send_mqtt();
+    Serial.println("MQTT Client Connected");
+  }
+  else
+  {
+    Serial.println("MQTT Client Not Connected");
+    connect_mqtt();
+  }
+  
 
   if (airSensor.dataAvailable()) {
     Serial.print("CO2 in ppm: ");
@@ -155,7 +206,7 @@ void loop() {
     Serial.println(bme.readHumidity());
 
     Serial.println(frRequestState);
-
+    
     Serial.print("Time Since Start: ");
     Serial.println(millis());
     Serial.println("--------------------------------------");
