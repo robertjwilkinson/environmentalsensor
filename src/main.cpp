@@ -16,15 +16,26 @@ const int ledPin = 12;
 const int buttonPin = 14;
 const char* mqtt_server = "3.104.60.108";
 
-char ssid[] = "InternodeF74F03";
-char password[] = "GGAYCK65NZTCZW9";
+char ssid[] = "Home";
+char password[] = "wombat11";
 int forcedRecalibration = 0;
 String frRequestState = "Forced Recalibration Not Requested"; //Initialise the current requested state description
 int ledState = LOW;         // the current state of the Forced Recalibration LED pin
 int buttonState;             // the current reading from the button pin
 int lastButtonState = LOW;   // the previous reading from the button pin
+int loopIteration;          // the number of times the main loop has iterated for inserting and reading from the values array
 unsigned long lastDebounceTime = 0;  // the last time the output pin was toggled
 unsigned long debounceDelay = 3000;    // the time to wait to ascertain that the Force Recalibration button was held
+unsigned long intervalTimer = 60000;  // the interval between calculating and sending values
+unsigned long lastInterval;     // the time of the last send
+unsigned long lastLoopTime;     // the time that the last main loop started
+unsigned long buttonPressLoopTime;  // the start of the recalibration button press
+int sensorValues [4] [30];    //initialise the array to hold sensor values
+int valueCount = 0;       //initialise a counter for the number of values added to the array
+int CO2Average;
+int tempAverage;
+int humidityAverage;
+int tVOCAverage;
 
 // *********************************************************
 // Function:          Connect Wifi
@@ -127,15 +138,15 @@ void forced_recalibration() {
 //**********************************
 void connect_mqtt(){
   while (!client.connected()) {
-    Serial.print("Attempting to connect to MQTT server ");
+    Serial.print("[INFO] [MQTT} Attempting to connect to MQTT server ");
     Serial.println(mqtt_server);
     if (client.connect("TestClient")) {
-      Serial.println("MQTT connected");
+      Serial.println("[INFO] [MQTT] MQTT connected");
     }
     else {
-      Serial.print("Failed to connect. Reason Code: ");
+      Serial.print("[ERROR] [MQTT]Failed to connect. Reason Code: ");
       Serial.println(client.state());
-      Serial.println("Attempting to reconnect in 2 seconds");
+      Serial.println("[INFO] [MQTT]Attempting to reconnect in 2 seconds");
       delay(2000);
     }
   }
@@ -151,12 +162,162 @@ void send_mqtt() {
   client.publish("outTopic", "Test Message");
 }
 
+//**********************************
+// Function:  Get SCD30 sensor CO2 reading
+// Description:  Get CO2 sensor value and return for storage
+// Last Modified By: Robert Wilkinson
+// Last Modified Date: 03.01.20
+//**********************************
+int get_CO2_value(){
+  // retrieve CO2 value
+  if (airSensor.dataAvailable()){
+    return airSensor.getCO2();
+  }
+  else {
+    Serial.println("[ERROR] [SCD30] invalid/no response received from SCD30");
+    return 0;
+  }
+}
+
+//**********************************
+// Function:  Get BME280 sensor temp reading
+// Description:  Get temp sensor value and return for storage
+// Last Modified By: Robert Wilkinson
+// Last Modified Date: 03.01.20
+//**********************************
+int get_temp_value(){
+  // retrieve temp value
+  int t = bme.readTemperature();
+  //check if the value returned is valid
+  if (!isnan(t) && t < 70 && t > -50){
+    return t;
+  }
+  else {
+    Serial.println("[ERROR] [BME280] invalid/no response received from BME280");
+    return 0;
+  }
+}
+
+//**********************************
+// Function:  Get BME280 sensor humidity reading
+// Description:  Get humidity sensor value and return for storage
+// Last Modified By: Robert Wilkinson
+// Last Modified Date: 03.01.20
+//**********************************
+int get_humidity_value(){
+  // retrieve humidity value
+  int h = bme.readHumidity();
+  //check if the value returned is valid
+  if (!isnan(h) && h < 100 && h > 1){
+    return h;
+  }
+  else {
+    Serial.println("[ERROR] [BME280] invalid/no response received from BME280");
+    return 0;
+  }
+}
+
+//**********************************
+// Function:  Get SGP30 sensor tVOC reading
+// Description:  Get tVOC sensor value and return for storage
+// Last Modified By: Robert Wilkinson
+// Last Modified Date: 03.01.20
+//**********************************
+int get_tVOC_value(){
+  return 0;
+  //****************** Placeholder for SGP30 Code **************
+}
+
+//**********************************
+// Function:  Add sensor readings to the array
+// Description:  Add sensor readings to the array so that they can be averaged
+//               at the end of the interval period and sent 
+// Last Modified By: Robert Wilkinson
+// Last Modified Date: 03.01.20
+//**********************************
+void add_array_values(){
+  Serial.println(valueCount);
+  sensorValues [0] [valueCount] = get_CO2_value();  
+  sensorValues [1] [valueCount] = get_temp_value();
+  sensorValues [2] [valueCount] = get_humidity_value();
+  sensorValues [3] [valueCount] = get_tVOC_value();
+
+  Serial.print("CO2: ");
+  Serial.println(sensorValues[0][valueCount]);
+  Serial.print("Temp: ");
+  Serial.println(sensorValues[1][valueCount]);
+  Serial.print("Humidity: ");
+  Serial.println(sensorValues[2][valueCount]);
+  Serial.print("tVOC: ");
+  Serial.println(sensorValues[3][valueCount]);
+  //increment the value counter
+  valueCount = valueCount+1;
+  Serial.println(valueCount);
+}
+
+//**********************************
+// Function:  calculate average sensor readings
+// Description:  Calculate the average readings for each sensor for sending
+// Last Modified By: Robert Wilkinson
+// Last Modified Date: 03.01.20
+//**********************************
+void average_sensor_values() {
+
+  for (int i = 0; i < 4; i++) {
+    // initialise temporary variables
+    int sampleCount = 0;
+    int sampleSum = 0;
+    int sampleAVG = 0;
+    int j;
+
+    // for each type (CO2, Temp, Humidity, tVOC) add all legit values and
+    // divide by the number of legit values. If all values add up to 0,
+    // make the average 0 to avoid mathematical issues. A value of -50
+    // indicates that it is the default array value and therefore not legit
+    for (j = 0; j < 30; j++) {
+      if (sensorValues [i] [j] == -50) {
+      }
+      else {        
+        sampleSum = sampleSum + sensorValues [i] [j];          
+        sampleCount = sampleCount + 1;         
+      }
+     }
+    
+    if (sampleSum == 0) {
+      sampleAVG = 0;       
+    } 
+    else {
+      sampleAVG = sampleSum / sampleCount; 
+    }
+
+    // add the calculated average to the variable corresponding to the sensor  
+    switch (i) {
+      case 0:
+         CO2Average = sampleAVG;
+         break;
+      case 1:
+        tempAverage = sampleAVG;
+        break;
+      case 2:
+         humidityAverage = sampleAVG;
+         break;
+      case 3:
+         tVOCAverage = sampleAVG;    
+         break;
+      default:
+         break;
+    } 
+  }
+}
+
+
 void setup() {
   pinMode(buttonPin, INPUT);
   pinMode(ledPin, OUTPUT);
   
   Serial.begin(9600);
-  Serial.println("Initialising");
+  Serial.println("");
+  Serial.println("[INFO] [SYSTEM INIT] Initialising");
   Wire.begin();
   WiFi.begin();
   airSensor.begin();
@@ -168,48 +329,67 @@ void setup() {
 
   // set initial LED state
   digitalWrite(ledPin, ledState);
+  lastLoopTime = millis();  //initialise the lastLoopTime variable
+
+  for (int i = 0; i < 4; i++) {
+      for (int j = 0; j < 30; j++) {
+        Serial.print("Array Line [");
+        Serial.print(i);
+        Serial.print("] [");
+        Serial.print(j);
+        Serial.print("] value: ");
+        sensorValues[i][j] = -50;
+        Serial.println(sensorValues[i][j]);
+      }
+  }
 }
 
 void loop() {
 
+  // STEP 1 - check if the send interval has been reached and send the average values
+  if (millis()-lastInterval > intervalTimer) {
+    if (client.connected()) {
+      send_mqtt();
+      Serial.println("[INFO] [MQTT] MQTT Message Sent");
+     }
+    else  {
+      connect_mqtt();
+    }
+    average_sensor_values();
+    Serial.println("-----------------------------");
+    Serial.println(CO2Average);
+    Serial.println(tempAverage);
+    Serial.println(humidityAverage);
+    Serial.println(tVOCAverage);
+    Serial.println("-----------------------------");
+    //reset the interval timer
+    lastInterval = millis();
+    //reset the value count
+    valueCount = 0;
+    //reset the array of sensor values 
+    for (int i = 0; i < 4; i++) {
+      for (int j = 0; j < 30; j++) {
+        sensorValues[i][j] = -50;
+      }
+    }
+  }
+
+  // STEP 2 - if the button to force recalibration is pressed. Wait 3 seconds to check if it remained pressed
   if (digitalRead(buttonPin == HIGH)) {
+    get_button_state();
+    buttonPressLoopTime = millis();
+    while (millis() - buttonPressLoopTime < 3000) {
+      delay(500);
+    }
     get_button_state();
   }
 
+  // STEP 3 - Check the flag for forced recalibration settings and action
   if (forcedRecalibration == 1 || forcedRecalibration == 2){
     forced_recalibration();
   }
 
-  if (client.connected()) {
-    send_mqtt();
-    Serial.println("MQTT Client Connected");
-  }
-  else
-  {
-    Serial.println("MQTT Client Not Connected");
-    connect_mqtt();
-  }
-  
-
-  if (airSensor.dataAvailable()) {
-    Serial.print("CO2 in ppm: ");
-    Serial.println(airSensor.getCO2());
-    
-    Serial.print("Temperature in C: ");
-    Serial.print(airSensor.getTemperature(), 1);
-    Serial.print("   ");
-    Serial.println(bme.readTemperature());
-
-    Serial.print("Humidity in %: ");
-    Serial.print(airSensor.getHumidity(), 1);
-    Serial.print("   ");
-    Serial.println(bme.readHumidity());
-
-    Serial.println(frRequestState);
-    
-    Serial.print("Time Since Start: ");
-    Serial.println(millis());
-    Serial.println("--------------------------------------");
-  }
-  delay(1000);
+  // STEP 4 - Check sensor values and add to the array
+  add_array_values();
+  delay(2000);
 }
