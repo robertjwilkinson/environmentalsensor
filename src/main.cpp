@@ -11,7 +11,6 @@ Adafruit_BME280 bme;
 WiFiClient espClient;
 PubSubClient client(espClient);
 
-
 const int ledPin = 12;
 const int buttonPin = 14;
 const char* mqtt_server = "3.104.60.108";
@@ -36,6 +35,9 @@ int CO2Average;
 int tempAverage;
 int humidityAverage;
 int tVOCAverage;
+String jsonString;
+
+
 
 // *********************************************************
 // Function:          Connect Wifi
@@ -43,7 +45,6 @@ int tVOCAverage;
 // Last Modified by:  Liam Cooper
 // Last Modified on:  31/12/2019
 // *********************************************************
-
 void connect_wifi() {
   Serial.write("[INFO] [WIFI] Attempting to connect to WiFi network ");
   Serial.println(ssid);
@@ -159,7 +160,9 @@ void connect_mqtt(){
 // Last Modified Date: 01.01.20
 //**********************************
 void send_mqtt() {
-  client.publish("outTopic", "Test Message");
+  char buf[50];
+  jsonString.toCharArray(buf, 50);
+  client.publish("outTopic", buf);
 }
 
 //**********************************
@@ -236,12 +239,12 @@ int get_tVOC_value(){
 // Last Modified Date: 03.01.20
 //**********************************
 void add_array_values(){
-  Serial.println(valueCount);
   sensorValues [0] [valueCount] = get_CO2_value();  
   sensorValues [1] [valueCount] = get_temp_value();
   sensorValues [2] [valueCount] = get_humidity_value();
   sensorValues [3] [valueCount] = get_tVOC_value();
 
+  Serial.println("------------------------------");
   Serial.print("CO2: ");
   Serial.println(sensorValues[0][valueCount]);
   Serial.print("Temp: ");
@@ -250,9 +253,9 @@ void add_array_values(){
   Serial.println(sensorValues[2][valueCount]);
   Serial.print("tVOC: ");
   Serial.println(sensorValues[3][valueCount]);
+  Serial.println("------------------------------");
   //increment the value counter
   valueCount = valueCount+1;
-  Serial.println(valueCount);
 }
 
 //**********************************
@@ -268,13 +271,12 @@ void average_sensor_values() {
     int sampleCount = 0;
     int sampleSum = 0;
     int sampleAVG = 0;
-    int j;
 
     // for each type (CO2, Temp, Humidity, tVOC) add all legit values and
     // divide by the number of legit values. If all values add up to 0,
     // make the average 0 to avoid mathematical issues. A value of -50
     // indicates that it is the default array value and therefore not legit
-    for (j = 0; j < 30; j++) {
+    for (int j = 0; j < 30; j++) {
       if (sensorValues [i] [j] == -50) {
       }
       else {        
@@ -310,6 +312,40 @@ void average_sensor_values() {
   }
 }
 
+//**********************************
+// Function:  Reset the values array
+// Description:  Reset the array to a known state so that legit values can be
+//               identified.
+// Last Modified By: Robert Wilkinson
+// Last Modified Date: 03.01.20
+//**********************************
+void reset_array() {
+  for (int i = 0; i < 4; i++) {
+      for (int j = 0; j < 30; j++) {
+        sensorValues[i][j] = -50;
+      }
+  }
+}
+
+//**********************************
+// Function:  Create a JSON string
+// Description:  creates a JSON string for sending via MQTT
+// Last Modified By: Robert Wilkinson
+// Last Modified Date: 03.01.20
+//**********************************
+void configure_json() {
+    jsonString = "{\"t\":";
+    jsonString = jsonString + tempAverage;
+    jsonString = jsonString + ",\"h\":";
+    jsonString = jsonString + humidityAverage;
+    jsonString = jsonString + ",\"c\":";
+    jsonString = jsonString + CO2Average;
+    jsonString = jsonString + ",\"v\":";
+    jsonString = jsonString + tVOCAverage;
+    jsonString = jsonString + "}";
+
+    Serial.println(jsonString);
+}
 
 void setup() {
   pinMode(buttonPin, INPUT);
@@ -330,31 +366,14 @@ void setup() {
   // set initial LED state
   digitalWrite(ledPin, ledState);
   lastLoopTime = millis();  //initialise the lastLoopTime variable
-
-  for (int i = 0; i < 4; i++) {
-      for (int j = 0; j < 30; j++) {
-        Serial.print("Array Line [");
-        Serial.print(i);
-        Serial.print("] [");
-        Serial.print(j);
-        Serial.print("] value: ");
-        sensorValues[i][j] = -50;
-        Serial.println(sensorValues[i][j]);
-      }
-  }
+  reset_array();
 }
 
 void loop() {
 
   // STEP 1 - check if the send interval has been reached and send the average values
   if (millis()-lastInterval > intervalTimer) {
-    if (client.connected()) {
-      send_mqtt();
-      Serial.println("[INFO] [MQTT] MQTT Message Sent");
-     }
-    else  {
-      connect_mqtt();
-    }
+
     average_sensor_values();
     Serial.println("-----------------------------");
     Serial.println(CO2Average);
@@ -362,16 +381,23 @@ void loop() {
     Serial.println(humidityAverage);
     Serial.println(tVOCAverage);
     Serial.println("-----------------------------");
+
+    if (client.connected()) {
+      configure_json();
+      send_mqtt();
+      Serial.println("[INFO] [MQTT] MQTT Message Sent");
+     }
+    else  {
+      connect_mqtt();
+      configure_json();
+      send_mqtt();
+      Serial.println("[INFO] [MQTT] MQTT Message Sent");
+    }
     //reset the interval timer
     lastInterval = millis();
     //reset the value count
     valueCount = 0;
-    //reset the array of sensor values 
-    for (int i = 0; i < 4; i++) {
-      for (int j = 0; j < 30; j++) {
-        sensorValues[i][j] = -50;
-      }
-    }
+    reset_array();
   }
 
   // STEP 2 - if the button to force recalibration is pressed. Wait 3 seconds to check if it remained pressed
