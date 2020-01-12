@@ -365,8 +365,17 @@ void setup() {
   WiFi.begin();
   airSensor.begin();
   bme.begin(0x76);
-  sgp.begin();
-
+  
+  if (! sgp.begin()){
+    Serial.println("[ERROR] [SGP30] SGP30 Sensor Not Found");
+  }
+  else {
+    Serial.print("[INFO] [SGP30] SGP30 Sensor Found. Serial#: ");
+    Serial.print(sgp.serialnumber[0], HEX);
+    Serial.print(sgp.serialnumber[1], HEX);
+    Serial.println(sgp.serialnumber[2], HEX);
+  }
+  
   connect_wifi();
   client.setServer(mqtt_server, 1883);
   connect_mqtt();
