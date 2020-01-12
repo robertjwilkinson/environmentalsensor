@@ -358,6 +358,7 @@ void setup() {
   pinMode(buttonPin, INPUT);
   pinMode(ledPin, OUTPUT);
   
+  delay(5000);
   Serial.begin(9600);
   Serial.println("");
   Serial.println("[INFO] [SYSTEM INIT] Initialising");
@@ -375,7 +376,7 @@ void setup() {
     Serial.print(sgp.serialnumber[1], HEX);
     Serial.println(sgp.serialnumber[2], HEX);
   }
-  
+
   connect_wifi();
   client.setServer(mqtt_server, 1883);
   connect_mqtt();
