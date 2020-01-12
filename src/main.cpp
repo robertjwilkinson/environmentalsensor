@@ -3,11 +3,13 @@
 #include <SparkFun_SCD30_Arduino_Library.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
+#include <Adafruit_SGP30.h>
 #include <WiFi.h>
 #include <PubSubClient.h>
 
 SCD30 airSensor;
 Adafruit_BME280 bme;
+Adafruit_SGP30 sgp;
 WiFiClient espClient;
 PubSubClient client(espClient);
 
@@ -227,8 +229,13 @@ int get_humidity_value(){
 // Last Modified Date: 03.01.20
 //**********************************
 int get_tVOC_value(){
-  return 0;
-  //****************** Placeholder for SGP30 Code **************
+  if (! sgp.IAQmeasure()) {
+    Serial.println("[ERROR] [SGP30] Invalid/no response received from SGP30");
+    return 0;
+  }
+  else {
+    return sgp.TVOC;
+  }
 }
 
 //**********************************
@@ -358,6 +365,7 @@ void setup() {
   WiFi.begin();
   airSensor.begin();
   bme.begin(0x76);
+  sgp.begin();
 
   connect_wifi();
   client.setServer(mqtt_server, 1883);
@@ -374,12 +382,20 @@ void loop() {
   // STEP 1 - check if the send interval has been reached and send the average values
   if (millis()-lastInterval > intervalTimer) {
 
+    uint16_t TVOC_base, eCO2_base;
+
     average_sensor_values();
     Serial.println("-----------------------------");
     Serial.println(CO2Average);
     Serial.println(tempAverage);
     Serial.println(humidityAverage);
     Serial.println(tVOCAverage);
+    if (! sgp.getIAQBaseline(&TVOC_base, &eCO2_base)){
+      Serial.println("[ERROR] [SGP30] Failed to get SGP30 baseline readings");
+      return;
+    }
+    else {}
+    Serial.println(TVOC_base, DEC);
     Serial.println("-----------------------------");
 
     if (client.connected()) {
