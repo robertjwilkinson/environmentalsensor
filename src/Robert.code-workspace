@@ -1,11 +1,11 @@
 {
 	"folders": [
 		{
-			"path": "/Users/user/Documents/Code/ebbandflood"
+			"path": "C:\\Users\\Robert\\Documents\\Repos\\Environmental Monitoring\\environmentalsensor"
 		},
 		{
-			"name": "Environmental Sensor",
-			"path": "/Users/user/Documents/PlatformIO/Projects/Environmental Sensor"
+			"name": "EEPROM SGP30 POC",
+			"path": "C:\\Users\\Robert\\Documents\\PlatformIO\\Projects\\EEPROM SGP30 POC"
 		}
 	],
 	"settings": {}

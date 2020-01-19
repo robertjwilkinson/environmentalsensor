@@ -6,6 +6,9 @@
 #include <Adafruit_SGP30.h>
 #include <WiFi.h>
 #include <PubSubClient.h>
+#include <MyEEPROM.h> //to install this library, see https://docs.platformio.org/en/latest/userguide/lib/cmd_install.html
+                      //library is at https://github.com/JQIamo/MyEEPROM-arduino.git
+
 
 SCD30 airSensor;
 Adafruit_BME280 bme;
@@ -37,6 +40,7 @@ int CO2Average;
 int tempAverage;
 int humidityAverage;
 int tVOCAverage;
+int baselineSaveCounter = 0;  //initialise a counter to keep the number of cycles since the baseline was last saved.
 String jsonString;
 
 
@@ -375,6 +379,27 @@ void setup() {
     Serial.print(sgp.serialnumber[0], HEX);
     Serial.print(sgp.serialnumber[1], HEX);
     Serial.println(sgp.serialnumber[2], HEX);
+
+    //If a baseline exists in the EEPROM apply it on SGP startup
+    byte vocBuffer[2];
+    MyEEPROM.read(0x100, vocBuffer, sizeof(vocBuffer));
+    uint16_t tVOCBaseline = ((int)(vocBuffer[0])<<8)
+                      + vocBuffer[1];
+
+    byte co2Buffer[2];
+    MyEEPROM.read(0x102, co2Buffer, sizeof(co2Buffer));
+    uint16_t CO2Baseline = ((int)(co2Buffer[0])<<8)
+                      + co2Buffer[1];
+    if (CO2Baseline > 0 && tVOCBaseline > 0) {
+      sgp.setIAQBaseline(CO2Baseline, tVOCBaseline);
+      Serial.print("[INFO] [SGP30] SGP Baseline applied tVOC: ");
+      Serial.print(tVOCBaseline);
+      Serial.print(" CO2: ");
+      Serial.print(CO2Baseline);
+    }
+    else {
+      Serial.println("[INFO] [SGP30] No baseline was found");
+    }
   }
 
   connect_wifi();
@@ -404,8 +429,29 @@ void loop() {
       Serial.println("[ERROR] [SGP30] Failed to get SGP30 baseline readings");
       return;
     }
-    else {}
-    Serial.println(TVOC_base, DEC);
+    else {
+      Serial.println(TVOC_base, DEC);
+
+      //If approximately 1 hour (60 x 60 second cycles) has passed, save the TVOC
+      //baseline to the EEPROM.
+      //for information on writing bytes see https://www.thethingsnetwork.org/docs/devices/bytes.html
+      if (baselineSaveCounter = 60){
+        baselineSaveCounter = 0;
+        Serial.println("[INFO] [SYSTEM] Saving SGP30 baseline to EEPROM");
+        
+        //Write the VOC baseline to address 0x100 and 0x101. i.e. block 1 address 0 & 1
+        byte baselineVOC[2];
+        baselineVOC[0] = highByte(TVOC_base);
+        baselineVOC[1] = lowByte(TVOC_base);
+        MyEEPROM.write(0x100, baselineVOC, sizeof(baselineVOC));
+
+        //Write the CO2 baseline to address 0x102 and 0x103
+        byte baselineCO2[2];
+        baselineCO2[0] = highByte(eCO2_base);
+        baselineCO2[1] = lowByte(eCO2_base);
+        MyEEPROM.write(0x102, baselineCO2, sizeof(baselineCO2));
+      }
+    }
     Serial.println("-----------------------------");
 
     if (client.connected()) {
