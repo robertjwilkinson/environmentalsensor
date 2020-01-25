@@ -38,7 +38,9 @@ int sensorValues [4] [30];    //initialise the array to hold sensor values
 int valueCount = 0;       //initialise a counter for the number of values added to the array
 int CO2Average;
 int tempAverage;
+int lastTemp = 200;             //The last temp reading used to calculate the AH
 int humidityAverage;
+int lastHumidity = 0;         //The last humidity reading used to calculate the AH
 int tVOCAverage;
 int baselineSaveCounter = 0;  //initialise a counter to keep the number of cycles since the baseline was last saved.
 String jsonString;
@@ -199,6 +201,7 @@ int get_temp_value(){
   int t = bme.readTemperature();
   //check if the value returned is valid
   if (!isnan(t) && t < 70 && t > -50){
+    lastTemp = t;
     return t;
   }
   else {
@@ -218,12 +221,33 @@ int get_humidity_value(){
   int h = bme.readHumidity();
   //check if the value returned is valid
   if (!isnan(h) && h < 100 && h > 1){
+    lastHumidity = h;
     return h;
   }
   else {
     Serial.println("[ERROR] [BME280] invalid/no response received from BME280");
     return 0;
   }
+}
+
+//**********************************
+// Function:  Calculate the absolute humidity
+// Description:  Calculate absolute humidity from the BME280 Temp & RH to apply
+//               on the SGP30 for humidity compensation
+// Last Modified By: Robert Wilkinson
+// Last Modified Date: 26.01.20
+//**********************************
+uint32_t get_absolute_humidity(int temperature, int humidity) {
+   if (lastHumidity == 0 || lastTemp == 200) {
+      Serial.println("[ERROR] [SYSTEM] Could not calculate Absolute Humidity");
+      return 0;
+   }
+   else {
+      // approximation formula from Sensirion SGP30 Driver Integration chapter 3.15
+      const float absoluteHumidity = 216.7 * ((humidity / 100.0) * 6.112 * exp((17.62 * temperature) / (243.12 + temperature)) / (273.15 + temperature)); // [g/m^3]
+      const uint32_t absoluteHumidityScaled = static_cast<uint32_t>(1000.0 * absoluteHumidity); // [mg/m^3]
+      return absoluteHumidityScaled;
+   }
 }
 
 //**********************************
@@ -435,7 +459,7 @@ void loop() {
       //If approximately 1 hour (60 x 60 second cycles) has passed, save the TVOC
       //baseline to the EEPROM.
       //for information on writing bytes see https://www.thethingsnetwork.org/docs/devices/bytes.html
-      if (baselineSaveCounter = 60){
+      if (baselineSaveCounter == 60){
         baselineSaveCounter = 0;
         Serial.println("[INFO] [SYSTEM] Saving SGP30 baseline to EEPROM");
         
@@ -488,6 +512,7 @@ void loop() {
   }
 
   // STEP 4 - Check sensor values and add to the array
+  sgp.setHumidity(get_absolute_humidity(lastTemp, lastHumidity)); //compensate the tVOC reading for AH
   add_array_values();
   delay(2000);
 }
