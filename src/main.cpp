@@ -414,7 +414,7 @@ void setup() {
     MyEEPROM.read(0x102, co2Buffer, sizeof(co2Buffer));
     uint16_t CO2Baseline = ((int)(co2Buffer[0])<<8)
                       + co2Buffer[1];
-    if (CO2Baseline > 0 && tVOCBaseline > 0) {
+    if (tVOCBaseline < 65534) {
       sgp.setIAQBaseline(CO2Baseline, tVOCBaseline);
       Serial.print("[INFO] [SGP30] SGP Baseline applied tVOC: ");
       Serial.print(tVOCBaseline);
@@ -474,6 +474,9 @@ void loop() {
         baselineCO2[0] = highByte(eCO2_base);
         baselineCO2[1] = lowByte(eCO2_base);
         MyEEPROM.write(0x102, baselineCO2, sizeof(baselineCO2));
+      }
+      else {
+        baselineSaveCounter++;
       }
     }
     Serial.println("-----------------------------");
