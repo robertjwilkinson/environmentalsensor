@@ -246,6 +246,9 @@ uint32_t get_absolute_humidity(int temperature, int humidity) {
       // approximation formula from Sensirion SGP30 Driver Integration chapter 3.15
       const float absoluteHumidity = 216.7 * ((humidity / 100.0) * 6.112 * exp((17.62 * temperature) / (243.12 + temperature)) / (273.15 + temperature)); // [g/m^3]
       const uint32_t absoluteHumidityScaled = static_cast<uint32_t>(1000.0 * absoluteHumidity); // [mg/m^3]
+      Serial.print("[INFO] [SYSTEM] Absolute Humidity: ");
+      Serial.print(absoluteHumidityScaled);
+      Serial.println(" mg/m^3");
       return absoluteHumidityScaled;
    }
 }
