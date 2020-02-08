@@ -20,8 +20,10 @@ const int ledPin = 12;
 const int buttonPin = 14;
 const char* mqtt_server = "3.104.60.108";
 
-char ssid[] = "Home";
-char password[] = "wombat11";
+//char ssid[] = "Home";
+//char password[] = "wombat11";
+char ssid[] = "Sentrian.Device";
+char password[] = "A09843587450867134968689789749875";
 int forcedRecalibration = 0;
 String frRequestState = "Forced Recalibration Not Requested"; //Initialise the current requested state description
 int ledState = LOW;         // the current state of the Forced Recalibration LED pin
@@ -43,6 +45,7 @@ int humidityAverage;
 int lastHumidity = 0;         //The last humidity reading used to calculate the AH
 int tVOCAverage;
 int baselineSaveCounter = 0;  //initialise a counter to keep the number of cycles since the baseline was last saved.
+int tempOffset = -3;          //Temperature offset to compensate for differences due to enclosure etc
 String jsonString;
 
 
@@ -201,7 +204,8 @@ int get_temp_value(){
   int t = bme.readTemperature();
   //check if the value returned is valid
   if (!isnan(t) && t < 70 && t > -50){
-    lastTemp = t;
+    t = t + tempOffset;
+    lastTemp = t;    
     return t;
   }
   else {
