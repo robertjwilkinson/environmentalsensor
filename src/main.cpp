@@ -20,10 +20,10 @@ const int ledPin = 12;
 const int buttonPin = 14;
 const char* mqtt_server = "3.104.60.108";
 
-//char ssid[] = "Home";
-//char password[] = "wombat11";
-char ssid[] = "Sentrian.Device";
-char password[] = "A09843587450867134968689789749875";
+char ssid[] = "Home";
+char password[] = "wombat11";
+//char ssid[] = "Sentrian.Device";
+//char password[] = "A09843587450867134968689789749875";
 int forcedRecalibration = 0;
 String frRequestState = "Forced Recalibration Not Requested"; //Initialise the current requested state description
 int ledState = LOW;         // the current state of the Forced Recalibration LED pin
@@ -452,17 +452,24 @@ void loop() {
 
     average_sensor_values();
     Serial.println("-----------------------------");
+    Serial.println("1 Minute Average Values");
+    Serial.print("CO2 Average: ");
     Serial.println(CO2Average);
+    Serial.print("Temperature Average: ");
     Serial.println(tempAverage);
+    Serial.print("Humidity Average: ");
     Serial.println(humidityAverage);
+    Serial.print("tVOC Average:");
     Serial.println(tVOCAverage);
     if (! sgp.getIAQBaseline(&TVOC_base, &eCO2_base)){
+      Serial.println("-----------------------------");
       Serial.println("[ERROR] [SGP30] Failed to get SGP30 baseline readings");
       return;
     }
     else {
+      Serial.print("tVOC Baseline: ");
       Serial.println(TVOC_base, DEC);
-
+      Serial.println("-----------------------------");
       //If approximately 1 hour (60 x 60 second cycles) has passed, save the TVOC
       //baseline to the EEPROM.
       //for information on writing bytes see https://www.thethingsnetwork.org/docs/devices/bytes.html
